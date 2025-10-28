@@ -96,6 +96,7 @@ class AutoTradingApp:
     def update_holdings_table(self):
         """보유종목 테이블 업데이트"""
         holdings = self.controller.get_bought_stocks()
+        print(f"[GUI 업데이트] update_holdings_table 호출됨 - 보유종목 {len(holdings)}개")
         self.main_window.update_holdings_table(holdings)
 
     def run(self):

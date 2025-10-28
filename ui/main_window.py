@@ -448,9 +448,11 @@ class MainWindow(QMainWindow):
 
     def update_holdings_table(self, holdings):
         """보유종목 테이블 업데이트"""
+        print(f"[MainWindow] update_holdings_table 호출 - {len(holdings)}개 종목")
         self.holdings_table.setRowCount(0)
 
         for code, info in holdings.items():
+            print(f"[MainWindow] 테이블에 추가: {info['name']}({code}), 수량:{info['quantity']}, 매수가:{info['buy_price']}")
             row = self.holdings_table.rowCount()
             self.holdings_table.insertRow(row)
 
