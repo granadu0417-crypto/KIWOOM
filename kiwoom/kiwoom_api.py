@@ -157,7 +157,6 @@ class KiwoomAPI(QAxWidget):
             print("[오류] 계좌번호가 설정되지 않았습니다")
             return {}
 
-        print(f"[디버그] 계좌평가잔고내역 요청 시작 - 계좌번호: {self.account_number}")
         self.tr_data['holdings'] = {}
 
         # TR 입력값 설정
@@ -167,13 +166,10 @@ class KiwoomAPI(QAxWidget):
         self.set_input_value("조회구분", "1")  # 1:합산, 2:개별
 
         # TR 요청
-        print("[디버그] OPW00018 TR 요청 중...")
         self.comm_rq_data("계좌평가잔고내역요청", "opw00018", 0, "2000")
         self.request_event_loop.exec_()
 
-        holdings = self.tr_data.get('holdings', {})
-        print(f"[디버그] 조회 결과: {len(holdings)}개 종목")
-        return holdings
+        return self.tr_data.get('holdings', {})
 
     # ===== TR 데이터 요청 =====
     def _api_call_limit(self):
@@ -226,12 +222,10 @@ class KiwoomAPI(QAxWidget):
 
     def _handle_balance_data(self):
         """잔고 데이터 처리 (OPW00018)"""
-        print("[디버그] _handle_balance_data 호출됨")
         holdings = {}
 
         # 보유 종목 수
         cnt = self.get_repeat_cnt("opw00018", "계좌평가잔고내역요청")
-        print(f"[디버그] 보유 종목 수: {cnt}")
 
         for i in range(cnt):
             code = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "종목번호").strip()
@@ -239,8 +233,6 @@ class KiwoomAPI(QAxWidget):
             quantity = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "보유수량").strip()
             buy_price = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "매입가").strip()
             current_price = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "현재가").strip()
-
-            print(f"[디버그] 종목 {i}: code={code}, name={name}, qty={quantity}, buy={buy_price}, cur={current_price}")
 
             # 데이터 정제
             code = code.strip('A')  # 종목코드 앞의 'A' 제거
@@ -255,9 +247,7 @@ class KiwoomAPI(QAxWidget):
                     'buy_price': buy_price,
                     'current_price': current_price
                 }
-                print(f"[디버그] 종목 추가됨: {name}({code})")
 
-        print(f"[디버그] 최종 holdings 개수: {len(holdings)}")
         self.tr_data['holdings'] = holdings
 
     def _handle_stock_info_data(self):

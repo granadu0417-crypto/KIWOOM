@@ -21,6 +21,7 @@ class TradingController(QObject):
     deposit_updated = pyqtSignal(int)
     log_message = pyqtSignal(str)
     server_type_updated = pyqtSignal(str)  # "모의투자" 또는 "실전투자"
+    holdings_loaded = pyqtSignal()  # 보유종목 로드 완료
 
     def __init__(self):
         super().__init__()
@@ -151,6 +152,8 @@ class TradingController(QObject):
                 self.log_message.emit(f"보유종목 {len(holdings)}개 발견")
                 self.buy_strategy.add_existing_holdings(holdings)
                 self.log_message.emit("보유종목 등록 완료")
+                # GUI 업데이트 시그널 발송
+                self.holdings_loaded.emit()
             else:
                 self.log_message.emit("보유종목 없음")
 

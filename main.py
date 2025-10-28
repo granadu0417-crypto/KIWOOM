@@ -43,6 +43,9 @@ class AutoTradingApp:
         # 로그 메시지
         self.controller.log_message.connect(self.main_window.add_log)
 
+        # 보유종목 로드 완료
+        self.controller.holdings_loaded.connect(self.update_holdings_table)
+
         # 조건 편입/이탈
         self.controller.condition_manager.condition_occurred.connect(self.on_condition_occurred)
         self.controller.condition_manager.condition_removed.connect(self.on_condition_removed)
