@@ -10,6 +10,7 @@ class ConditionManager(QObject):
     # 시그널 정의
     condition_occurred = pyqtSignal(str, str, int)  # 종목코드, 조건검색명, 슬롯번호
     condition_removed = pyqtSignal(str, str, int)  # 종목코드, 조건검색명, 슬롯번호
+    condition_loaded = pyqtSignal(list)  # 조건검색식 로드 완료
 
     def __init__(self, kiwoom_api):
         super().__init__()
@@ -32,6 +33,7 @@ class ConditionManager(QObject):
         if hasattr(self.api, 'is_api_available') and self.api.is_api_available:
             self.api.OnReceiveTrCondition.connect(self._on_receive_tr_condition)
             self.api.OnReceiveRealCondition.connect(self._on_receive_real_condition)
+            self.api.OnReceiveConditionVer.connect(self._on_receive_condition_ver)
 
     def load_conditions(self):
         """조건검색식 목록 로드"""
@@ -164,3 +166,16 @@ class ConditionManager(QObject):
                     'stocks': list(slot['matched_stocks'])
                 }
         return all_stocks
+
+    def _on_receive_condition_ver(self, ret, msg):
+        """조건검색식 로드 완료 이벤트"""
+        if ret == 1:
+            # 조건검색식 목록 가져오기
+            conditions = list(self.api.condition_list.keys())
+            print(f"[ConditionManager] 조건검색식 {len(conditions)}개 로드 완료")
+
+            # 시그널 발생 (GUI 업데이트용)
+            self.condition_loaded.emit(conditions)
+        else:
+            print(f"[ConditionManager] 조건검색식 로드 실패: {msg}")
+            self.condition_loaded.emit([])

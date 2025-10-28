@@ -54,6 +54,7 @@ class TradingController(QObject):
         # 조건검색 시그널
         self.condition_manager.condition_occurred.connect(self.on_condition_occurred)
         self.condition_manager.condition_removed.connect(self.on_condition_removed)
+        self.condition_manager.condition_loaded.connect(self.on_condition_loaded)
 
         # 매수 시그널
         self.buy_strategy.buy_order_sent.connect(self.on_buy_order_sent)
@@ -108,20 +109,22 @@ class TradingController(QObject):
             self.login_completed.emit(False)
 
     def load_conditions(self):
-        """조건검색식 로드"""
+        """조건검색식 로드 요청 (비동기)"""
         try:
             self.log_message.emit("조건검색식 로드 중...")
-            ret = self.condition_manager.load_conditions()
-
-            if ret:
-                conditions = list(self.condition_manager.get_condition_list().keys())
-                self.condition_list_updated.emit(conditions)
-                self.log_message.emit(f"조건검색식 {len(conditions)}개 로드 완료")
-            else:
-                self.log_message.emit("조건검색식 로드 실패")
-
+            self.condition_manager.load_conditions()
+            # 실제 로드 완료는 on_condition_loaded에서 처리됨
         except Exception as e:
             self.log_message.emit(f"조건검색식 로드 오류: {e}")
+            self.logger.log_error("조건검색", str(e))
+
+    def on_condition_loaded(self, conditions):
+        """조건검색식 로드 완료 시 (비동기 이벤트)"""
+        try:
+            self.log_message.emit(f"조건검색식 {len(conditions)}개 로드 완료")
+            self.condition_list_updated.emit(conditions)
+        except Exception as e:
+            self.log_message.emit(f"조건검색식 업데이트 오류: {e}")
             self.logger.log_error("조건검색", str(e))
 
     # ===== 조건검색 관련 =====
