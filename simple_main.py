@@ -23,6 +23,7 @@ class SimpleController(QObject):
         super().__init__()
         self.api = KiwoomAPI()
         self.is_logged_in = False
+        self.server_type = "모의투자"  # 기본값
         self.holdings = {}  # 보유종목 {종목코드: {name, quantity, buy_price, current_price}}
 
     def login(self):
@@ -44,14 +45,14 @@ class SimpleController(QObject):
                     # 서버 구분
                     server_gubun = self.api.get_server_gubun()
                     if server_gubun == "1":
-                        server_type = "모의투자"
+                        self.server_type = "모의투자"
                     else:
-                        server_type = "실전투자"
+                        self.server_type = "실전투자"
 
                     print(f"계좌번호: {account_no}")
-                    print(f"서버구분: {server_type}")
+                    print(f"서버구분: {self.server_type}")
 
-                    self.account_info.emit(account_no, server_type)
+                    self.account_info.emit(account_no, self.server_type)
                     self.login_completed.emit(True)
 
                     # 로그인 후 예수금 조회
@@ -146,7 +147,7 @@ class SimpleController(QObject):
             self.calculate_and_update_stats()
 
     def calculate_and_update_stats(self):
-        """통계 계산 및 업데이트 (2단계)"""
+        """통계 계산 및 업데이트 (2단계) - 수수료/세금 반영"""
         if not self.holdings:
             # 보유종목 없으면 모두 0
             self.stats_updated.emit(0, 0, 0, 0.0)
@@ -154,6 +155,7 @@ class SimpleController(QObject):
 
         total_buy = 0      # 총매입
         total_eval = 0     # 총평가
+        total_profit = 0   # 총손익 (수수료/세금 포함)
 
         for code, info in self.holdings.items():
             buy_price = info.get('buy_price', 0)
@@ -163,13 +165,49 @@ class SimpleController(QObject):
             total_buy += buy_price * quantity
             total_eval += current_price * quantity
 
-        total_profit = total_eval - total_buy  # 총손익
+            # 각 종목의 평가손익 계산 (수수료/세금 포함)
+            profit, _ = self.calculate_profit_with_fees(buy_price, current_price, quantity)
+            total_profit += profit
+
         total_profit_rate = (total_profit / total_buy * 100) if total_buy > 0 else 0.0  # 총수익률
 
         print(f"[통계] 총매입: {total_buy:,}원 / 총평가: {total_eval:,}원 / 총손익: {total_profit:+,}원 / 총수익률: {total_profit_rate:+.2f}%")
 
         self.stats_updated.emit(total_buy, total_eval, total_profit, total_profit_rate)
         self.holdings_table_updated.emit(self.holdings)  # 보유종목 테이블도 업데이트
+
+    def calculate_profit_with_fees(self, buy_price, current_price, quantity):
+        """
+        수수료와 세금을 고려한 평가손익 계산
+
+        Args:
+            buy_price: 매입가 (이미 매수수수료 포함)
+            current_price: 현재가
+            quantity: 수량
+
+        Returns:
+            (평가손익, 수익률)
+        """
+        buy_amount = buy_price * quantity  # 매수금액 (수수료 포함)
+        eval_amount = current_price * quantity  # 평가금액
+
+        # 실전투자일 경우 매도 시 발생할 수수료와 세금 차감
+        if self.server_type == "실전투자":
+            # 매도 수수료 (일반적으로 0.015%)
+            sell_fee = eval_amount * 0.00015
+            # 증권거래세 (0.23%)
+            tax = eval_amount * 0.0023
+
+            # 평가손익 = 평가금액 - 매수금액 - 매도수수료 - 세금
+            profit = eval_amount - buy_amount - sell_fee - tax
+        else:
+            # 모의투자는 수수료/세금 없음
+            profit = eval_amount - buy_amount
+
+        # 수익률
+        profit_rate = (profit / buy_amount * 100) if buy_amount > 0 else 0.0
+
+        return profit, profit_rate
 
 
 class SimpleWindow(QMainWindow):
@@ -564,9 +602,11 @@ class SimpleWindow(QMainWindow):
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.holdings_table.setItem(row, 4, item)
 
+            # 평가손익 및 수익률 (수수료/세금 반영)
+            eval_profit, profit_rate = self.controller.calculate_profit_with_fees(buy_price, current_price, quantity)
+
             # 평가손익
-            eval_profit = (current_price - buy_price) * quantity
-            item = QTableWidgetItem(f"{eval_profit:+,}원")
+            item = QTableWidgetItem(f"{int(eval_profit):+,}원")
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
             # 색상 지정
@@ -578,7 +618,6 @@ class SimpleWindow(QMainWindow):
             self.holdings_table.setItem(row, 5, item)
 
             # 수익률
-            profit_rate = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 else 0.0
             item = QTableWidgetItem(f"{profit_rate:+.2f}%")
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
