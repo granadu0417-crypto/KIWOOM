@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QGroupBox, QComboBox, QSpinBox, QDoubleSpinBox,
                               QCheckBox, QLineEdit, QMessageBox, QTabWidget,
                               QHeaderView)
-from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtCore import Qt, pyqtSlot, QTimer
 from PyQt5.QtGui import QColor
 import sys
 
@@ -27,6 +27,11 @@ class MainWindow(QMainWindow):
 
         # 시그널 연결
         self.connect_signals()
+
+        # 실시간 업데이트 타이머 (1초마다)
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_holdings_realtime)
+        self.update_timer.start(1000)  # 1000ms = 1초
 
     def init_ui(self):
         """UI 초기화"""
@@ -449,13 +454,16 @@ class MainWindow(QMainWindow):
             row = self.holdings_table.rowCount()
             self.holdings_table.insertRow(row)
 
-            # TODO: 현재가 및 수익률 계산
-            current_price = 10000  # 임시
+            # 실시간 시세에서 현재가 가져오기
             buy_price = info.get('buy_price', 0)
             quantity = info.get('quantity', 0)
 
+            # API에서 실시간 시세 가져오기
+            real_data = self.controller.api.real_data.get(code, {})
+            current_price = real_data.get('current_price', buy_price)  # 없으면 매수가로
+
             # 매수가가 0이면 수익률 계산 불가
-            if buy_price > 0:
+            if buy_price > 0 and current_price > 0:
                 profit_rate = ((current_price - buy_price) / buy_price) * 100
                 profit_amount = (current_price - buy_price) * quantity
             else:
@@ -477,3 +485,9 @@ class MainWindow(QMainWindow):
                 item = self.holdings_table.item(row, col)
                 if item:
                     item.setBackground(color)
+
+    def update_holdings_realtime(self):
+        """실시간으로 보유종목 테이블 업데이트"""
+        holdings = self.controller.get_bought_stocks()
+        if holdings:
+            self.update_holdings_table(holdings)

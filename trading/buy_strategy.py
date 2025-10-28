@@ -112,6 +112,10 @@ class BuyStrategy(QObject):
                     'buy_time': time.time(),
                     'additional_buys': []  # 추가 매수 이력
                 }
+
+                # 실시간 시세 등록
+                self._register_real_price(code)
+
                 return True
             else:
                 print(f"[매수 실패] {name}({code}) - 주문 전송 오류: {ret}")
@@ -218,6 +222,18 @@ class BuyStrategy(QObject):
 
         return False
 
+    def _register_real_price(self, code):
+        """실시간 시세 등록"""
+        try:
+            # 실시간 시세 등록 (주식체결)
+            # FID: 10=현재가, 12=등락률, 13=누적거래량
+            fid_list = "10;12;13"
+            screen_no = "1000"
+            self.api.set_real_reg(screen_no, code, fid_list, "1")  # "1"=추가 등록
+            print(f"[실시간 시세 등록] {code}")
+        except Exception as e:
+            print(f"[실시간 시세 등록 실패] {code}: {e}")
+
     def get_bought_stocks(self):
         """매수 완료 종목 목록 반환"""
         return self.bought_stocks
@@ -227,6 +243,13 @@ class BuyStrategy(QObject):
         if code in self.bought_stocks:
             del self.bought_stocks[code]
             print(f"[매수 목록 제거] {code}")
+
+            # 실시간 시세 해제
+            try:
+                self.api.set_real_remove("1000", code)
+                print(f"[실시간 시세 해제] {code}")
+            except:
+                pass
 
     def clear_buy_queue(self):
         """매수 대기 큐 초기화"""

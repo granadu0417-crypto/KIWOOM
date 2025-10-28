@@ -59,6 +59,9 @@ class KiwoomAPI(QAxWidget):
         # 로그인 상태
         self.is_connected = False
 
+        # 실시간 시세 데이터 저장 {종목코드: {현재가, 등락률, ...}}
+        self.real_data = {}
+
     def _create_kiwoom_instance(self):
         """키움 OpenAPI+ 인스턴스 생성"""
         result = self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
@@ -219,10 +222,39 @@ class KiwoomAPI(QAxWidget):
     # ===== 실시간 데이터 =====
     def _on_receive_real_data(self, code, real_type, real_data):
         """실시간 데이터 수신"""
-        pass
+        if real_type == "주식체결":
+            # 실시간 시세 데이터 저장
+            current_price = self.get_comm_real_data(code, 10)  # 현재가
+            change_rate = self.get_comm_real_data(code, 12)    # 등락률
+            volume = self.get_comm_real_data(code, 13)         # 누적거래량
+
+            # 데이터 저장
+            self.real_data[code] = {
+                'current_price': abs(int(current_price)),  # 부호 제거
+                'change_rate': float(change_rate),
+                'volume': int(volume)
+            }
+
+    def get_comm_real_data(self, code, fid):
+        """실시간 데이터 가져오기
+        FID:
+        10: 현재가
+        11: 전일대비
+        12: 등락률
+        13: 누적거래량
+        27: (최우선)매도호가
+        28: (최우선)매수호가
+        """
+        ret = self.dynamicCall("GetCommRealData(QString, int)", code, fid)
+        return ret.strip()
 
     def set_real_reg(self, screen_no, code_list, fid_list, real_type):
-        """실시간 데이터 등록"""
+        """실시간 데이터 등록
+        screen_no: 화면번호
+        code_list: 종목코드 리스트 (';'로 구분)
+        fid_list: FID 리스트 (';'로 구분)
+        real_type: "0"=기존 등록 제거 후 등록, "1"=기존 등록에 추가
+        """
         ret = self.dynamicCall("SetRealReg(QString, QString, QString, QString)",
                                screen_no, code_list, fid_list, real_type)
         return ret
@@ -243,8 +275,56 @@ class KiwoomAPI(QAxWidget):
         return ret
 
     def _on_receive_chejan_data(self, gubun, item_cnt, fid_list):
-        """체결/잔고 데이터 수신"""
-        pass
+        """체결/잔고 데이터 수신
+        gubun: "0"=주문체결, "1"=잔고통보, "3"=특이신호
+        """
+        if gubun == "0":  # 주문체결
+            # 체결 정보
+            order_status = self.get_chejan_data(913)  # 주문상태
+            code = self.get_chejan_data(9001)         # 종목코드
+            order_num = self.get_chejan_data(9203)    # 주문번호
+            order_name = self.get_chejan_data(302)    # 종목명
+            order_qty = self.get_chejan_data(900)     # 주문수량
+            order_price = self.get_chejan_data(901)   # 주문가격
+            exec_qty = self.get_chejan_data(911)      # 체결수량
+            exec_price = self.get_chejan_data(910)    # 체결가
+
+            print(f"[체결통보] {order_name}({code}) | 상태:{order_status} | 체결가:{exec_price} | 체결량:{exec_qty}")
+
+        elif gubun == "1":  # 잔고통보
+            # 잔고 정보
+            code = self.get_chejan_data(9001)         # 종목코드
+            stock_name = self.get_chejan_data(302)    # 종목명
+            balance = self.get_chejan_data(930)       # 보유수량
+            avg_price = self.get_chejan_data(931)     # 평균단가
+            current_price = self.get_chejan_data(10)  # 현재가
+
+            print(f"[잔고통보] {stock_name}({code}) | 보유:{balance} | 평균단가:{avg_price} | 현재가:{current_price}")
+
+    def get_chejan_data(self, fid):
+        """체결 데이터 가져오기
+        FID:
+        9001: 종목코드
+        302: 종목명
+        900: 주문수량
+        901: 주문가격
+        902: 미체결수량
+        903: 주문구분(매수/매도)
+        904: 원주문번호
+        905: 주문번호
+        908: 주문/체결시간
+        909: 체결번호
+        910: 체결가
+        911: 체결량
+        912: 주문수량(체결+미체결)
+        913: 주문상태(접수/확인/체결)
+        930: 보유수량
+        931: 평균단가
+        932: 총매입가
+        933: 주문가능수량
+        """
+        ret = self.dynamicCall("GetChejanData(int)", fid)
+        return ret.strip()
 
     # ===== 조건검색 관련 =====
     def get_condition_load(self):
