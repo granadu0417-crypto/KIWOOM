@@ -4,7 +4,7 @@
 """
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                              QPushButton, QLabel, QMessageBox, QGroupBox, QGridLayout)
+                              QPushButton, QLabel, QMessageBox, QGroupBox, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView)
 from PyQt5.QtCore import Qt, QObject, pyqtSignal, QTimer
 from kiwoom.kiwoom_api import KiwoomAPI
 
@@ -17,6 +17,7 @@ class SimpleController(QObject):
     deposit_updated = pyqtSignal(int)     # 예수금
     deposit_error = pyqtSignal(str)       # 예수금 조회 오류
     stats_updated = pyqtSignal(int, int, int, float)  # 총매입, 총평가, 총손익, 총수익률
+    holdings_table_updated = pyqtSignal(dict)  # 보유종목 테이블 업데이트
 
     def __init__(self):
         super().__init__()
@@ -98,12 +99,51 @@ class SimpleController(QObject):
             for code, info in self.holdings.items():
                 print(f"  - {info['name']}({code}): {info['quantity']}주 @ {info['buy_price']:,}원")
 
+            # 실시간 시세 등록 (3단계)
+            self.register_real_prices()
+
             # 통계 계산 및 업데이트 (2단계)
             self.calculate_and_update_stats()
 
         except Exception as e:
             error_msg = f"보유종목 조회 실패: {e}"
             print(error_msg)
+
+    def register_real_prices(self):
+        """보유종목 실시간 시세 등록 (3단계)"""
+        if not self.holdings:
+            return
+
+        # 모든 보유종목의 종목코드 리스트
+        code_list = ";".join(self.holdings.keys())
+
+        # 실시간 등록 (FID: 10=현재가, 12=등락률, 13=누적거래량)
+        fid_list = "10;12;13"
+        screen_no = "1000"
+
+        try:
+            self.api.set_real_reg(screen_no, code_list, fid_list, "0")  # "0"=기존 제거 후 등록
+            print(f"[실시간] {len(self.holdings)}개 종목 실시간 시세 등록 완료")
+        except Exception as e:
+            print(f"[실시간] 시세 등록 실패: {e}")
+
+    def update_realtime_prices(self):
+        """실시간 시세 업데이트 (3단계)"""
+        if not self.holdings:
+            return
+
+        # API의 real_data에서 현재가 가져와서 holdings 업데이트
+        updated = False
+        for code in self.holdings.keys():
+            if code in self.api.real_data:
+                real_price = self.api.real_data[code].get('current_price', 0)
+                if real_price > 0:
+                    self.holdings[code]['current_price'] = real_price
+                    updated = True
+
+        # 업데이트 되었으면 통계 재계산
+        if updated:
+            self.calculate_and_update_stats()
 
     def calculate_and_update_stats(self):
         """통계 계산 및 업데이트 (2단계)"""
@@ -129,6 +169,7 @@ class SimpleController(QObject):
         print(f"[통계] 총매입: {total_buy:,}원 / 총평가: {total_eval:,}원 / 총손익: {total_profit:+,}원 / 총수익률: {total_profit_rate:+.2f}%")
 
         self.stats_updated.emit(total_buy, total_eval, total_profit, total_profit_rate)
+        self.holdings_table_updated.emit(self.holdings)  # 보유종목 테이블도 업데이트
 
 
 class SimpleWindow(QMainWindow):
@@ -151,11 +192,17 @@ class SimpleWindow(QMainWindow):
         self.controller.deposit_updated.connect(self.on_deposit_updated)
         self.controller.deposit_error.connect(self.on_deposit_error)
         self.controller.stats_updated.connect(self.on_stats_updated)
+        self.controller.holdings_table_updated.connect(self.on_holdings_table_updated)
 
         # 주기적 예수금 갱신 타이머 (30초마다)
         self.deposit_timer = QTimer()
         self.deposit_timer.timeout.connect(self.on_timer_refresh)
         self.deposit_timer.setInterval(30000)  # 30초
+
+        # 실시간 가격 업데이트 타이머 (1초마다)
+        self.realtime_timer = QTimer()
+        self.realtime_timer.timeout.connect(self.on_realtime_update)
+        self.realtime_timer.setInterval(1000)  # 1초
 
     def init_ui(self):
         """UI 초기화"""
@@ -319,8 +366,8 @@ class SimpleWindow(QMainWindow):
         info_group.setLayout(info_layout)
         main_layout.addWidget(info_group)
 
-        # === 하단: 빈 공간 (나중에 채울 예정) ===
-        bottom_group = QGroupBox("기능 영역 (준비 중)")
+        # === 하단: 보유종목 테이블 ===
+        bottom_group = QGroupBox("보유종목")
         bottom_group.setStyleSheet("""
             QGroupBox {
                 font-size: 14pt;
@@ -338,12 +385,46 @@ class SimpleWindow(QMainWindow):
         """)
 
         bottom_layout = QVBoxLayout()
-        empty_label = QLabel("이 영역은 나중에 기능이 추가될 예정입니다")
-        empty_label.setAlignment(Qt.AlignCenter)
-        empty_label.setStyleSheet("font-size: 12pt; color: #95a5a6;")
-        bottom_layout.addWidget(empty_label)
-        bottom_layout.addStretch()
 
+        # 보유종목 테이블
+        self.holdings_table = QTableWidget()
+        self.holdings_table.setColumnCount(7)
+        self.holdings_table.setHorizontalHeaderLabels(["종목코드", "종목명", "수량", "매입가", "현재가", "평가손익", "수익률"])
+
+        # 테이블 스타일
+        self.holdings_table.setStyleSheet("""
+            QTableWidget {
+                font-size: 11pt;
+                gridline-color: #bdc3c7;
+                background-color: white;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QHeaderView::section {
+                background-color: #34495e;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                font-size: 12pt;
+            }
+        """)
+
+        # 헤더 설정
+        header = self.holdings_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # 종목코드
+        header.setSectionResizeMode(1, QHeaderView.Stretch)           # 종목명
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # 수량
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 매입가
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # 현재가
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # 평가손익
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # 수익률
+
+        self.holdings_table.verticalHeader().setVisible(False)
+        self.holdings_table.setAlternatingRowColors(True)
+        self.holdings_table.setSelectionBehavior(QTableWidget.SelectRows)
+
+        bottom_layout.addWidget(self.holdings_table)
         bottom_group.setLayout(bottom_layout)
         main_layout.addWidget(bottom_group)
 
@@ -364,6 +445,7 @@ class SimpleWindow(QMainWindow):
 
             # 주기적 갱신 시작
             self.deposit_timer.start()
+            self.realtime_timer.start()  # 실시간 가격 업데이트 시작
         else:
             self.status_label.setText("✗ 로그인 실패")
             self.status_label.setStyleSheet("font-size: 13pt; color: #e74c3c;")
@@ -438,6 +520,75 @@ class SimpleWindow(QMainWindow):
 
         self.total_profit_rate_label.setText(f"{sign}{total_profit_rate:.2f}%")
         self.total_profit_rate_label.setStyleSheet(f"font-size: 16pt; font-weight: bold; color: {color};")
+
+    def on_realtime_update(self):
+        """실시간 가격 업데이트 (1초마다)"""
+        self.controller.update_realtime_prices()
+
+    def on_holdings_table_updated(self, holdings):
+        """보유종목 테이블 업데이트"""
+        # 테이블 초기화
+        self.holdings_table.setRowCount(0)
+
+        if not holdings:
+            return
+
+        # 보유종목 데이터 추가
+        self.holdings_table.setRowCount(len(holdings))
+
+        for row, (code, info) in enumerate(holdings.items()):
+            # 종목코드
+            item = QTableWidgetItem(code)
+            item.setTextAlignment(Qt.AlignCenter)
+            self.holdings_table.setItem(row, 0, item)
+
+            # 종목명
+            item = QTableWidgetItem(info.get('name', '-'))
+            self.holdings_table.setItem(row, 1, item)
+
+            # 수량
+            quantity = info.get('quantity', 0)
+            item = QTableWidgetItem(f"{quantity:,}")
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.holdings_table.setItem(row, 2, item)
+
+            # 매입가
+            buy_price = info.get('buy_price', 0)
+            item = QTableWidgetItem(f"{buy_price:,}원")
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.holdings_table.setItem(row, 3, item)
+
+            # 현재가
+            current_price = info.get('current_price', buy_price)
+            item = QTableWidgetItem(f"{current_price:,}원")
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.holdings_table.setItem(row, 4, item)
+
+            # 평가손익
+            eval_profit = (current_price - buy_price) * quantity
+            item = QTableWidgetItem(f"{eval_profit:+,}원")
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # 색상 지정
+            if eval_profit > 0:
+                item.setForeground(Qt.red)
+            elif eval_profit < 0:
+                item.setForeground(Qt.blue)
+
+            self.holdings_table.setItem(row, 5, item)
+
+            # 수익률
+            profit_rate = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 else 0.0
+            item = QTableWidgetItem(f"{profit_rate:+.2f}%")
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # 색상 지정
+            if profit_rate > 0:
+                item.setForeground(Qt.red)
+            elif profit_rate < 0:
+                item.setForeground(Qt.blue)
+
+            self.holdings_table.setItem(row, 6, item)
 
 
 class SimpleApp:
