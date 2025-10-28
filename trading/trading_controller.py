@@ -84,7 +84,15 @@ class TradingController(QObject):
                 self.is_logged_in = True
                 self.log_message.emit("로그인 성공!")
 
-                # 서버 구분 (모의투자/실전투자)
+                # 계좌 정보 가져오기 (먼저 해야 서버 구분 가능)
+                accounts = self.api.get_account_list()
+                self.account_updated.emit(accounts)
+
+                if accounts:
+                    self.api.set_account_number(accounts[0])
+                    self.log_message.emit(f"계좌 설정: {accounts[0]}")
+
+                # 서버 구분 (모의투자/실전투자) - 계좌번호로 판별
                 server_gubun = self.api.get_server_gubun()
                 if server_gubun == "1":
                     server_type = "모의투자"
@@ -93,14 +101,6 @@ class TradingController(QObject):
                     server_type = "실전투자"
                     self.log_message.emit("🔴 실전투자 서버에 접속되었습니다")
                 self.server_type_updated.emit(server_type)
-
-                # 계좌 정보 가져오기
-                accounts = self.api.get_account_list()
-                self.account_updated.emit(accounts)
-
-                if accounts:
-                    self.api.set_account_number(accounts[0])
-                    self.log_message.emit(f"계좌 설정: {accounts[0]}")
 
                 # 조건검색식 로드
                 self.load_conditions()

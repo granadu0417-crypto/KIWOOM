@@ -117,9 +117,25 @@ class KiwoomAPI(QAxWidget):
         return ret
 
     def get_server_gubun(self):
-        """접속 서버 구분 (1: 모의투자, 나머지: 실서버)"""
-        ret = self.dynamicCall("GetLoginInfo(QString)", "GetServerGubun")
-        return ret
+        """접속 서버 구분
+        Returns:
+            str: "1" (모의투자) 또는 "" (실서버)
+        """
+        try:
+            # 방법 1: API 직접 호출
+            ret = self.dynamicCall("GetLoginInfo(QString)", "GetServerGubun")
+            if ret:
+                return ret
+        except:
+            pass
+
+        # 방법 2: 계좌번호로 판별 (모의투자 계좌는 8로 시작)
+        if self.account_list:
+            first_account = self.account_list[0]
+            if first_account.startswith('8'):
+                return "1"  # 모의투자
+
+        return ""  # 실서버
 
     # ===== 계좌 관련 =====
     def get_account_list(self):
