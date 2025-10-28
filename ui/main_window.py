@@ -451,15 +451,21 @@ class MainWindow(QMainWindow):
 
             # TODO: 현재가 및 수익률 계산
             current_price = 10000  # 임시
-            buy_price = info['buy_price']
-            quantity = info['quantity']
-            profit_rate = ((current_price - buy_price) / buy_price) * 100
-            profit_amount = (current_price - buy_price) * quantity
+            buy_price = info.get('buy_price', 0)
+            quantity = info.get('quantity', 0)
+
+            # 매수가가 0이면 수익률 계산 불가
+            if buy_price > 0:
+                profit_rate = ((current_price - buy_price) / buy_price) * 100
+                profit_amount = (current_price - buy_price) * quantity
+            else:
+                profit_rate = 0.0
+                profit_amount = 0
 
             self.holdings_table.setItem(row, 0, QTableWidgetItem(code))
             self.holdings_table.setItem(row, 1, QTableWidgetItem(info['name']))
             self.holdings_table.setItem(row, 2, QTableWidgetItem(str(quantity)))
-            self.holdings_table.setItem(row, 3, QTableWidgetItem(f"{buy_price:,}"))
+            self.holdings_table.setItem(row, 3, QTableWidgetItem(f"{buy_price:,}" if buy_price > 0 else "시장가"))
             self.holdings_table.setItem(row, 4, QTableWidgetItem(f"{current_price:,}"))
             self.holdings_table.setItem(row, 5, QTableWidgetItem(f"{profit_rate:+.2f}%"))
             self.holdings_table.setItem(row, 6, QTableWidgetItem(f"{profit_amount:+,}"))

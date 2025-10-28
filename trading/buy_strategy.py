@@ -96,14 +96,17 @@ class BuyStrategy(QObject):
             )
 
             if ret == 0:
-                print(f"[매수 주문] {name}({code}) {quantity}주 @ {price}원")
-                self.buy_order_sent.emit(code, quantity, price, hoga_gb)
+                # 시장가인 경우 실제 매수가를 현재가로 저장
+                actual_buy_price = price if price > 0 else self._get_current_price(code)
+
+                print(f"[매수 주문] {name}({code}) {quantity}주 @ {actual_buy_price:,}원")
+                self.buy_order_sent.emit(code, quantity, actual_buy_price, hoga_gb)
 
                 # 매수 완료 목록에 추가 (임시)
                 self.bought_stocks[code] = {
                     'name': name,
                     'quantity': quantity,
-                    'buy_price': price,
+                    'buy_price': actual_buy_price,
                     'slot_number': item['slot_number'],
                     'settings': settings,
                     'buy_time': time.time(),
