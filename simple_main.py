@@ -393,12 +393,15 @@ class SimpleWindow(QMainWindow):
 
     def on_refresh_click(self):
         """새로고침 버튼 클릭"""
+        print("[새로고침] 예수금 및 보유종목 갱신")
         self.controller.refresh_deposit()
+        self.controller.refresh_holdings()
 
     def on_timer_refresh(self):
         """타이머에 의한 자동 갱신"""
-        print("[타이머] 예수금 자동 갱신")
+        print("[타이머] 예수금 및 보유종목 자동 갱신")
         self.controller.refresh_deposit()
+        self.controller.refresh_holdings()
 
     def on_stats_updated(self, total_buy, total_eval, total_profit, total_profit_rate):
         """통계 업데이트 (2단계)"""
