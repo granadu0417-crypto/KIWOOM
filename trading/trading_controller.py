@@ -146,18 +146,26 @@ class TradingController(QObject):
         """기존 보유종목 조회 및 등록"""
         try:
             self.log_message.emit("보유종목 조회 중...")
+            print("[TradingController] request_balance() 호출 전")
             holdings = self.api.request_balance()
+            print(f"[TradingController] request_balance() 반환됨 - {len(holdings)}개")
 
             if holdings:
                 self.log_message.emit(f"보유종목 {len(holdings)}개 발견")
+                print(f"[TradingController] add_existing_holdings() 호출")
                 self.buy_strategy.add_existing_holdings(holdings)
                 self.log_message.emit("보유종목 등록 완료")
                 # GUI 업데이트 시그널 발송
+                print(f"[TradingController] holdings_loaded 시그널 발송")
                 self.holdings_loaded.emit()
             else:
+                print("[TradingController] holdings가 비어있음")
                 self.log_message.emit("보유종목 없음")
 
         except Exception as e:
+            print(f"[TradingController] 예외 발생: {e}")
+            import traceback
+            traceback.print_exc()
             self.log_message.emit(f"보유종목 조회 오류: {e}")
             self.logger.log_error("보유종목조회", str(e))
 
