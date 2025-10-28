@@ -68,6 +68,13 @@ class TradingController(QObject):
     def login(self):
         """로그인"""
         try:
+            # API 사용 가능 여부 체크
+            if not hasattr(self.api, 'is_api_available') or not self.api.is_api_available:
+                self.log_message.emit("⚠️ 키움 OpenAPI+가 설치되지 않았습니다!")
+                self.log_message.emit("설치 후 프로그램을 재시작하세요.")
+                self.login_completed.emit(False)
+                return
+
             self.log_message.emit("로그인 시도 중...")
             self.api.comm_connect()
 

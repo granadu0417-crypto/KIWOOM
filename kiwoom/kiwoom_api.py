@@ -14,7 +14,29 @@ class KiwoomAPI(QAxWidget):
 
     def __init__(self):
         super().__init__()
-        self._create_kiwoom_instance()
+
+        # OpenAPI+ 사용 가능 여부
+        self.is_api_available = False
+
+        try:
+            self._create_kiwoom_instance()
+            self.is_api_available = True
+        except Exception as e:
+            print(f"\n{'='*60}")
+            print("⚠️  키움 OpenAPI+ 연결 실패!")
+            print(f"{'='*60}")
+            print("\n다음 단계를 따라 설치하세요:\n")
+            print("1. 키움증권 HTS(영웅문) 실행 후 로그인")
+            print("2. 메뉴: 시스템(S) → OpenAPI+ → 조회 및 신청")
+            print("3. OpenAPI+ 사용 신청")
+            print("4. 다운로드 탭에서 'OpenAPI+ 모듈' 다운로드 및 설치")
+            print("5. 컴퓨터 재시작")
+            print("\n또는:")
+            print("https://www.kiwoom.com/h/customer/download/VOpenApiInfoView")
+            print("에서 직접 다운로드하세요.")
+            print(f"\n{'='*60}\n")
+            # 에러를 발생시키지 않고 계속 진행
+            return
 
         # 이벤트 루프
         self.login_event_loop = None
@@ -31,14 +53,17 @@ class KiwoomAPI(QAxWidget):
         self.api_call_time = time.time()
 
         # 시그널 연결
-        self._connect_signals()
+        if self.is_api_available:
+            self._connect_signals()
 
         # 로그인 상태
         self.is_connected = False
 
     def _create_kiwoom_instance(self):
         """키움 OpenAPI+ 인스턴스 생성"""
-        self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
+        result = self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
+        if not result:
+            raise Exception("OpenAPI+ 컨트롤 생성 실패")
 
     def _connect_signals(self):
         """시그널과 슬롯 연결"""
