@@ -151,6 +151,24 @@ class KiwoomAPI(QAxWidget):
         """사용할 계좌번호 설정"""
         self.account_number = account_number
 
+    def request_deposit(self):
+        """예수금 조회 (OPW00001)"""
+        if not self.account_number:
+            print("[오류] 계좌번호가 설정되지 않았습니다")
+            return 0
+
+        self.tr_data['deposit'] = 0
+
+        # TR 입력값 설정
+        self.set_input_value("계좌번호", self.account_number)
+        self.set_input_value("비밀번호", "")
+        self.set_input_value("비밀번호입력매체구분", "00")
+
+        # TR 요청 (comm_rq_data가 이미 event loop를 실행함)
+        self.comm_rq_data("예수금상세현황요청", "opw00001", 0, "2000")
+
+        return self.tr_data.get('deposit', 0)
+
     def request_balance(self):
         """계좌평가잔고내역 요청 (OPW00018)"""
         if not self.account_number:
