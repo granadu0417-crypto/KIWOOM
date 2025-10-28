@@ -28,9 +28,10 @@ class ConditionManager(QObject):
                 'is_running': False
             })
 
-        # API 시그널 연결
-        self.api.OnReceiveTrCondition.connect(self._on_receive_tr_condition)
-        self.api.OnReceiveRealCondition.connect(self._on_receive_real_condition)
+        # API 시그널 연결 (API가 사용 가능한 경우에만)
+        if hasattr(self.api, 'is_api_available') and self.api.is_api_available:
+            self.api.OnReceiveTrCondition.connect(self._on_receive_tr_condition)
+            self.api.OnReceiveRealCondition.connect(self._on_receive_real_condition)
 
     def load_conditions(self):
         """조건검색식 목록 로드"""
