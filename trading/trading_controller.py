@@ -20,6 +20,7 @@ class TradingController(QObject):
     condition_list_updated = pyqtSignal(list)
     deposit_updated = pyqtSignal(int)
     log_message = pyqtSignal(str)
+    server_type_updated = pyqtSignal(str)  # "모의투자" 또는 "실전투자"
 
     def __init__(self):
         super().__init__()
@@ -82,6 +83,16 @@ class TradingController(QObject):
             if self.api.is_connected:
                 self.is_logged_in = True
                 self.log_message.emit("로그인 성공!")
+
+                # 서버 구분 (모의투자/실전투자)
+                server_gubun = self.api.get_server_gubun()
+                if server_gubun == "1":
+                    server_type = "모의투자"
+                    self.log_message.emit("⚠️ 모의투자 서버에 접속되었습니다")
+                else:
+                    server_type = "실전투자"
+                    self.log_message.emit("🔴 실전투자 서버에 접속되었습니다")
+                self.server_type_updated.emit(server_type)
 
                 # 계좌 정보 가져오기
                 accounts = self.api.get_account_list()

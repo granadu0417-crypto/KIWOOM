@@ -116,6 +116,11 @@ class KiwoomAPI(QAxWidget):
         ret = self.dynamicCall("GetLoginInfo(QString)", tag)
         return ret
 
+    def get_server_gubun(self):
+        """접속 서버 구분 (1: 모의투자, 나머지: 실서버)"""
+        ret = self.dynamicCall("GetLoginInfo(QString)", "GetServerGubun")
+        return ret
+
     # ===== 계좌 관련 =====
     def get_account_list(self):
         """계좌번호 목록 가져오기"""

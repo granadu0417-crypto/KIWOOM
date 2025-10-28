@@ -55,6 +55,11 @@ class MainWindow(QMainWindow):
         self.login_status_label = QLabel("상태: 미연결")
         layout.addWidget(self.login_status_label)
 
+        # 서버 타입 (모의투자/실전투자)
+        self.server_type_label = QLabel("서버: -")
+        self.server_type_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
+        layout.addWidget(self.server_type_label)
+
         # 계좌 선택
         layout.addWidget(QLabel("계좌:"))
         self.account_combo = QComboBox()
@@ -185,6 +190,9 @@ class MainWindow(QMainWindow):
         # 보유종목 탭
         tabs.addTab(self.create_holdings_table(), "보유종목")
 
+        # 조건 편입/이탈 탭
+        tabs.addTab(self.create_condition_log_table(), "조건 편입/이탈")
+
         # 거래내역 탭
         tabs.addTab(self.create_trades_table(), "거래내역")
 
@@ -192,6 +200,27 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.create_log_panel(), "로그")
 
         return tabs
+
+    def create_condition_log_table(self):
+        """조건 편입/이탈 로그 테이블"""
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels([
+            "시간", "구분", "조건검색명", "종목명", "종목코드"
+        ])
+
+        # 테이블 설정
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+
+        # 최신 항목이 위로 오도록 설정
+        table.setSortingEnabled(False)
+
+        self.condition_log_table = table
+        return table
 
     def create_holdings_table(self):
         """보유종목 테이블"""
@@ -335,6 +364,15 @@ class MainWindow(QMainWindow):
             widget.condition_combo.clear()
             widget.condition_combo.addItems(conditions)
 
+    def update_server_type(self, server_type):
+        """서버 타입 업데이트 (모의투자/실전투자)"""
+        if server_type == "모의투자":
+            self.server_type_label.setText(f"서버: ⚠️ {server_type}")
+            self.server_type_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: orange;")
+        else:
+            self.server_type_label.setText(f"서버: 🔴 {server_type}")
+            self.server_type_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: red;")
+
     def update_deposit(self, deposit):
         """예수금 업데이트"""
         self.deposit_label.setText(f"예수금: {deposit:,}원")
@@ -350,6 +388,31 @@ class MainWindow(QMainWindow):
         from datetime import datetime
         timestamp = datetime.now().strftime('%H:%M:%S')
         self.log_text.append(f"[{timestamp}] {message}")
+
+    def add_condition_log(self, event_type, condition_name, stock_name, stock_code):
+        """조건 편입/이탈 로그 추가"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
+        # 맨 위에 삽입 (최신 항목이 위로)
+        self.condition_log_table.insertRow(0)
+
+        self.condition_log_table.setItem(0, 0, QTableWidgetItem(timestamp))
+        self.condition_log_table.setItem(0, 1, QTableWidgetItem(event_type))
+        self.condition_log_table.setItem(0, 2, QTableWidgetItem(condition_name))
+        self.condition_log_table.setItem(0, 3, QTableWidgetItem(stock_name))
+        self.condition_log_table.setItem(0, 4, QTableWidgetItem(stock_code))
+
+        # 색상 설정
+        if event_type == "편입":
+            color = QColor(200, 255, 200)  # 연한 초록
+        else:  # 이탈
+            color = QColor(255, 220, 220)  # 연한 빨강
+
+        for col in range(5):
+            item = self.condition_log_table.item(0, col)
+            if item:
+                item.setBackground(color)
 
     def add_trade_record(self, trade_type, name, quantity, price, profit_rate, reason):
         """거래내역 추가"""

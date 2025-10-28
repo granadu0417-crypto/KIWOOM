@@ -28,6 +28,9 @@ class AutoTradingApp:
         # 로그인 완료
         self.controller.login_completed.connect(self.main_window.update_login_status)
 
+        # 서버 타입 업데이트
+        self.controller.server_type_updated.connect(self.main_window.update_server_type)
+
         # 계좌 업데이트
         self.controller.account_updated.connect(self.main_window.update_account_list)
 
@@ -39,6 +42,10 @@ class AutoTradingApp:
 
         # 로그 메시지
         self.controller.log_message.connect(self.main_window.add_log)
+
+        # 조건 편입/이탈
+        self.controller.condition_manager.condition_occurred.connect(self.on_condition_occurred)
+        self.controller.condition_manager.condition_removed.connect(self.on_condition_removed)
 
         # 매수 주문
         self.controller.buy_strategy.buy_order_sent.connect(
@@ -52,6 +59,16 @@ class AutoTradingApp:
 
         # 매도 체결
         self.controller.sell_strategy.sell_completed.connect(self.on_sell_completed)
+
+    def on_condition_occurred(self, code, condition_name, slot_number):
+        """조건 편입 시"""
+        stock_name = self.controller.api.get_master_code_name(code)
+        self.main_window.add_condition_log("편입", condition_name, stock_name, code)
+
+    def on_condition_removed(self, code, condition_name, slot_number):
+        """조건 이탈 시"""
+        stock_name = self.controller.api.get_master_code_name(code)
+        self.main_window.add_condition_log("이탈", condition_name, stock_name, code)
 
     def on_buy_order(self, code, quantity, price):
         """매수 주문 시"""
