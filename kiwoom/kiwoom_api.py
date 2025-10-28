@@ -1,0 +1,263 @@
+"""
+키움증권 OpenAPI+ 연동 클래스
+"""
+import sys
+from PyQt5.QAxContainer import QAxWidget
+from PyQt5.QtCore import QEventLoop, QTimer
+from PyQt5.QtWidgets import QApplication
+import time
+from datetime import datetime
+
+
+class KiwoomAPI(QAxWidget):
+    """키움 OpenAPI+ 기본 클래스"""
+
+    def __init__(self):
+        super().__init__()
+        self._create_kiwoom_instance()
+
+        # 이벤트 루프
+        self.login_event_loop = None
+        self.request_event_loop = QEventLoop()
+
+        # 데이터 저장
+        self.account_number = None
+        self.account_list = []
+        self.tr_data = {}
+        self.condition_list = {}
+
+        # API 호출 제한 (초당 5회)
+        self.api_call_count = 0
+        self.api_call_time = time.time()
+
+        # 시그널 연결
+        self._connect_signals()
+
+        # 로그인 상태
+        self.is_connected = False
+
+    def _create_kiwoom_instance(self):
+        """키움 OpenAPI+ 인스턴스 생성"""
+        self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
+
+    def _connect_signals(self):
+        """시그널과 슬롯 연결"""
+        # 로그인 관련
+        self.OnEventConnect.connect(self._on_event_connect)
+
+        # TR 데이터 수신
+        self.OnReceiveTrData.connect(self._on_receive_tr_data)
+
+        # 실시간 데이터 수신
+        self.OnReceiveRealData.connect(self._on_receive_real_data)
+
+        # 체결 데이터 수신
+        self.OnReceiveChejanData.connect(self._on_receive_chejan_data)
+
+        # 조건검색 관련
+        self.OnReceiveConditionVer.connect(self._on_receive_condition_ver)
+        self.OnReceiveTrCondition.connect(self._on_receive_tr_condition)
+        self.OnReceiveRealCondition.connect(self._on_receive_real_condition)
+
+        # 메시지 수신
+        self.OnReceiveMsg.connect(self._on_receive_msg)
+
+    # ===== 로그인 관련 =====
+    def comm_connect(self):
+        """로그인 요청"""
+        self.dynamicCall("CommConnect()")
+        self.login_event_loop = QEventLoop()
+        self.login_event_loop.exec_()
+
+    def _on_event_connect(self, err_code):
+        """로그인 결과 처리"""
+        if err_code == 0:
+            print("[로그인 성공]")
+            self.is_connected = True
+        else:
+            print(f"[로그인 실패] 에러코드: {err_code}")
+            self.is_connected = False
+
+        if self.login_event_loop:
+            self.login_event_loop.exit()
+
+    def get_connect_state(self):
+        """연결 상태 확인"""
+        ret = self.dynamicCall("GetConnectState()")
+        return ret == 1
+
+    def get_login_info(self, tag):
+        """로그인 정보 가져오기"""
+        ret = self.dynamicCall("GetLoginInfo(QString)", tag)
+        return ret
+
+    # ===== 계좌 관련 =====
+    def get_account_list(self):
+        """계좌번호 목록 가져오기"""
+        account_list = self.get_login_info("ACCNO")
+        self.account_list = account_list.split(';')[:-1]
+        return self.account_list
+
+    def set_account_number(self, account_number):
+        """사용할 계좌번호 설정"""
+        self.account_number = account_number
+
+    # ===== TR 데이터 요청 =====
+    def _api_call_limit(self):
+        """API 호출 제한 체크 (초당 5회)"""
+        current_time = time.time()
+        if current_time - self.api_call_time >= 1.0:
+            self.api_call_count = 0
+            self.api_call_time = current_time
+
+        if self.api_call_count >= 5:
+            sleep_time = 1.0 - (current_time - self.api_call_time)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            self.api_call_count = 0
+            self.api_call_time = time.time()
+
+        self.api_call_count += 1
+
+    def set_input_value(self, id, value):
+        """TR 입력값 설정"""
+        self.dynamicCall("SetInputValue(QString, QString)", id, value)
+
+    def comm_rq_data(self, rqname, trcode, next, screen_no):
+        """TR 데이터 요청"""
+        self._api_call_limit()
+        self.dynamicCall("CommRqData(QString, QString, int, QString)",
+                         rqname, trcode, next, screen_no)
+        self.request_event_loop.exec_()
+
+    def _on_receive_tr_data(self, screen_no, rqname, trcode, record_name, next, unused1, unused2, unused3, unused4):
+        """TR 데이터 수신"""
+        if next == '2':
+            self.has_next_tr_data = True
+        else:
+            self.has_next_tr_data = False
+
+        if rqname == "예수금상세현황요청":
+            self._handle_deposit_data()
+        elif rqname == "계좌평가잔고내역요청":
+            self._handle_balance_data()
+        elif rqname == "주식기본정보요청":
+            self._handle_stock_info_data()
+
+        self.request_event_loop.exit()
+
+    def _handle_deposit_data(self):
+        """예수금 데이터 처리"""
+        deposit = self.get_comm_data("opw00001", "예수금상세현황요청", 0, "예수금")
+        self.tr_data['deposit'] = int(deposit)
+
+    def _handle_balance_data(self):
+        """잔고 데이터 처리"""
+        pass
+
+    def _handle_stock_info_data(self):
+        """주식정보 데이터 처리"""
+        pass
+
+    def get_comm_data(self, trcode, rqname, index, item_name):
+        """TR 데이터 가져오기"""
+        ret = self.dynamicCall("GetCommData(QString, QString, int, QString)",
+                               trcode, rqname, index, item_name)
+        return ret.strip()
+
+    def get_repeat_cnt(self, trcode, rqname):
+        """반복 데이터 개수"""
+        ret = self.dynamicCall("GetRepeatCnt(QString, QString)", trcode, rqname)
+        return ret
+
+    # ===== 실시간 데이터 =====
+    def _on_receive_real_data(self, code, real_type, real_data):
+        """실시간 데이터 수신"""
+        pass
+
+    def set_real_reg(self, screen_no, code_list, fid_list, real_type):
+        """실시간 데이터 등록"""
+        ret = self.dynamicCall("SetRealReg(QString, QString, QString, QString)",
+                               screen_no, code_list, fid_list, real_type)
+        return ret
+
+    def set_real_remove(self, screen_no, code):
+        """실시간 데이터 해제"""
+        self.dynamicCall("SetRealRemove(QString, QString)", screen_no, code)
+
+    # ===== 주문 관련 =====
+    def send_order(self, rqname, screen_no, acc_no, order_type, code, quantity, price, hoga_gb, org_order_no):
+        """주문 전송
+        order_type: 1-신규매수, 2-신규매도, 3-매수취소, 4-매도취소, 5-매수정정, 6-매도정정
+        hoga_gb: 00-지정가, 03-시장가, 05-조건부지정가, 06-최유리지정가, 등
+        """
+        self._api_call_limit()
+        ret = self.dynamicCall("SendOrder(QString, QString, QString, int, QString, int, int, QString, QString)",
+                               [rqname, screen_no, acc_no, order_type, code, quantity, price, hoga_gb, org_order_no])
+        return ret
+
+    def _on_receive_chejan_data(self, gubun, item_cnt, fid_list):
+        """체결/잔고 데이터 수신"""
+        pass
+
+    # ===== 조건검색 관련 =====
+    def get_condition_load(self):
+        """조건검색식 목록 요청"""
+        ret = self.dynamicCall("GetConditionLoad()")
+        return ret
+
+    def _on_receive_condition_ver(self, ret, msg):
+        """조건검색식 목록 수신"""
+        if ret == 1:
+            condition_list = self.dynamicCall("GetConditionNameList()")
+            conditions = condition_list.split(';')[:-1]
+
+            for condition in conditions:
+                index, name = condition.split('^')
+                self.condition_list[name] = int(index)
+
+            print(f"[조건검색식 로드 완료] {len(self.condition_list)}개")
+        else:
+            print(f"[조건검색식 로드 실패] {msg}")
+
+    def send_condition(self, screen_no, condition_name, index, search_type):
+        """조건검색 요청
+        search_type: 0-조회, 1-실시간
+        """
+        ret = self.dynamicCall("SendCondition(QString, QString, int, int)",
+                               screen_no, condition_name, index, search_type)
+        return ret
+
+    def _on_receive_tr_condition(self, screen_no, code_list, condition_name, index, next):
+        """조건검색 결과 수신"""
+        pass
+
+    def _on_receive_real_condition(self, code, event_type, condition_name, condition_index):
+        """실시간 조건검색 수신
+        event_type: I-편입, D-이탈
+        """
+        pass
+
+    def send_condition_stop(self, screen_no, condition_name, index):
+        """조건검색 중지"""
+        self.dynamicCall("SendConditionStop(QString, QString, int)",
+                         screen_no, condition_name, index)
+
+    # ===== 메시지 =====
+    def _on_receive_msg(self, screen_no, rqname, trcode, msg):
+        """메시지 수신"""
+        print(f"[메시지] {msg}")
+
+    # ===== 유틸리티 =====
+    def get_master_code_name(self, code):
+        """종목명 가져오기"""
+        ret = self.dynamicCall("GetMasterCodeName(QString)", code)
+        return ret
+
+    def get_code_list_by_market(self, market):
+        """시장별 종목코드 가져오기
+        market: 0-코스피, 10-코스닥, 3-ELW, 8-ETF, 등
+        """
+        ret = self.dynamicCall("GetCodeListByMarket(QString)", market)
+        code_list = ret.split(';')[:-1]
+        return code_list
