@@ -191,18 +191,22 @@ class SimpleController(QObject):
         buy_amount = buy_price * quantity  # 매수금액 (수수료 포함)
         eval_amount = current_price * quantity  # 평가금액
 
-        # 실전투자일 경우 매도 시 발생할 수수료와 세금 차감
-        if self.server_type == "실전투자":
-            # 매도 수수료 (일반적으로 0.015%)
+        # 매도 시 발생할 수수료와 세금 차감
+        if self.server_type == "모의투자":
+            # 모의투자: 높은 수수료/세금 적용 (무위험 차익거래 방지)
+            # 매도 수수료 0.35%
+            sell_fee = eval_amount * 0.0035
+            # 증권거래세 0.3%
+            tax = eval_amount * 0.003
+        else:
+            # 실전투자: 실제 수수료/세금 적용
+            # 매도 수수료 0.015%
             sell_fee = eval_amount * 0.00015
-            # 증권거래세 (0.23%)
+            # 증권거래세 0.23%
             tax = eval_amount * 0.0023
 
-            # 평가손익 = 평가금액 - 매수금액 - 매도수수료 - 세금
-            profit = eval_amount - buy_amount - sell_fee - tax
-        else:
-            # 모의투자는 수수료/세금 없음
-            profit = eval_amount - buy_amount
+        # 평가손익 = 평가금액 - 매수금액 - 매도수수료 - 세금
+        profit = eval_amount - buy_amount - sell_fee - tax
 
         # 수익률
         profit_rate = (profit / buy_amount * 100) if buy_amount > 0 else 0.0
