@@ -166,12 +166,10 @@ class KiwoomAPI(QAxWidget):
         self.set_input_value("비밀번호입력매체구분", "00")
         self.set_input_value("조회구분", "1")  # 1:합산, 2:개별
 
-        # TR 요청
-        print("[KiwoomAPI] OPW00018 TR 요청 전")
+        # TR 요청 (comm_rq_data가 이미 event loop를 실행함)
+        print("[KiwoomAPI] OPW00018 TR 요청")
         self.comm_rq_data("계좌평가잔고내역요청", "opw00018", 0, "2000")
-        print("[KiwoomAPI] event loop 대기 중...")
-        self.request_event_loop.exec_()
-        print("[KiwoomAPI] event loop 종료")
+        print("[KiwoomAPI] TR 응답 완료")
 
         holdings = self.tr_data.get('holdings', {})
         print(f"[KiwoomAPI] 조회 결과: {len(holdings)}개 종목")
