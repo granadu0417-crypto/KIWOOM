@@ -234,6 +234,25 @@ class BuyStrategy(QObject):
         except Exception as e:
             print(f"[실시간 시세 등록 실패] {code}: {e}")
 
+    def add_existing_holdings(self, holdings):
+        """기존 보유종목을 매수 목록에 추가"""
+        for code, info in holdings.items():
+            if code not in self.bought_stocks:
+                # 슬롯 번호는 0으로 설정 (기존 보유)
+                self.bought_stocks[code] = {
+                    'name': info['name'],
+                    'quantity': info['quantity'],
+                    'buy_price': info['buy_price'],
+                    'slot_number': 0,  # 기존 보유는 슬롯 0
+                    'buy_time': 0,  # 시간 정보 없음
+                    'additional_buys': []
+                }
+
+                # 실시간 시세 등록
+                self._register_real_price(code)
+
+                print(f"[기존 보유종목 등록] {info['name']}({code}) | 수량:{info['quantity']} | 매입가:{info['buy_price']:,}")
+
     def get_bought_stocks(self):
         """매수 완료 종목 목록 반환"""
         return self.bought_stocks

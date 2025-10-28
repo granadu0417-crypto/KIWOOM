@@ -151,6 +151,26 @@ class KiwoomAPI(QAxWidget):
         """사용할 계좌번호 설정"""
         self.account_number = account_number
 
+    def request_balance(self):
+        """계좌평가잔고내역 요청 (OPW00018)"""
+        if not self.account_number:
+            print("[오류] 계좌번호가 설정되지 않았습니다")
+            return {}
+
+        self.tr_data['holdings'] = {}
+
+        # TR 입력값 설정
+        self.set_input_value("계좌번호", self.account_number)
+        self.set_input_value("비밀번호", "")
+        self.set_input_value("비밀번호입력매체구분", "00")
+        self.set_input_value("조회구분", "1")  # 1:합산, 2:개별
+
+        # TR 요청
+        self.comm_rq_data("계좌평가잔고내역요청", "opw00018", 0, "2000")
+        self.request_event_loop.exec_()
+
+        return self.tr_data.get('holdings', {})
+
     # ===== TR 데이터 요청 =====
     def _api_call_limit(self):
         """API 호출 제한 체크 (초당 5회)"""
@@ -201,8 +221,34 @@ class KiwoomAPI(QAxWidget):
         self.tr_data['deposit'] = int(deposit)
 
     def _handle_balance_data(self):
-        """잔고 데이터 처리"""
-        pass
+        """잔고 데이터 처리 (OPW00018)"""
+        holdings = {}
+
+        # 보유 종목 수
+        cnt = self.get_repeat_cnt("opw00018", "계좌평가잔고내역요청")
+
+        for i in range(cnt):
+            code = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "종목번호").strip()
+            name = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "종목명").strip()
+            quantity = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "보유수량").strip()
+            buy_price = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "매입가").strip()
+            current_price = self.get_comm_data("opw00018", "계좌평가잔고내역요청", i, "현재가").strip()
+
+            # 데이터 정제
+            code = code.strip('A')  # 종목코드 앞의 'A' 제거
+            quantity = int(quantity) if quantity else 0
+            buy_price = abs(int(buy_price)) if buy_price else 0
+            current_price = abs(int(current_price)) if current_price else 0
+
+            if code and quantity > 0:
+                holdings[code] = {
+                    'name': name,
+                    'quantity': quantity,
+                    'buy_price': buy_price,
+                    'current_price': current_price
+                }
+
+        self.tr_data['holdings'] = holdings
 
     def _handle_stock_info_data(self):
         """주식정보 데이터 처리"""

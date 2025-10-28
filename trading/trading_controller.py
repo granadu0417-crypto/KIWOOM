@@ -105,6 +105,9 @@ class TradingController(QObject):
                 # 조건검색식 로드
                 self.load_conditions()
 
+                # 기존 보유종목 조회
+                self.load_existing_holdings()
+
                 # 텔레그램 알림
                 if self.telegram:
                     self.telegram.test_connection()
@@ -137,6 +140,23 @@ class TradingController(QObject):
         except Exception as e:
             self.log_message.emit(f"조건검색식 업데이트 오류: {e}")
             self.logger.log_error("조건검색", str(e))
+
+    def load_existing_holdings(self):
+        """기존 보유종목 조회 및 등록"""
+        try:
+            self.log_message.emit("보유종목 조회 중...")
+            holdings = self.api.request_balance()
+
+            if holdings:
+                self.log_message.emit(f"보유종목 {len(holdings)}개 발견")
+                self.buy_strategy.add_existing_holdings(holdings)
+                self.log_message.emit("보유종목 등록 완료")
+            else:
+                self.log_message.emit("보유종목 없음")
+
+        except Exception as e:
+            self.log_message.emit(f"보유종목 조회 오류: {e}")
+            self.logger.log_error("보유종목조회", str(e))
 
     # ===== 조건검색 관련 =====
 
