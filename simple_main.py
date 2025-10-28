@@ -16,11 +16,13 @@ class SimpleController(QObject):
     account_info = pyqtSignal(str, str)  # 계좌번호, 서버구분
     deposit_updated = pyqtSignal(int)     # 예수금
     deposit_error = pyqtSignal(str)       # 예수금 조회 오류
+    stats_updated = pyqtSignal(int, int, int, float)  # 총매입, 총평가, 총손익, 총수익률
 
     def __init__(self):
         super().__init__()
         self.api = KiwoomAPI()
         self.is_logged_in = False
+        self.holdings = {}  # 보유종목 {종목코드: {name, quantity, buy_price, current_price}}
 
     def login(self):
         """로그인"""
@@ -53,6 +55,9 @@ class SimpleController(QObject):
 
                     # 로그인 후 예수금 조회
                     self.refresh_deposit()
+
+                    # 로그인 후 보유종목 조회
+                    self.refresh_holdings()
                 else:
                     print("계좌 정보를 찾을 수 없습니다")
                     self.login_completed.emit(False)
@@ -79,6 +84,52 @@ class SimpleController(QObject):
             print(error_msg)
             self.deposit_error.emit(error_msg)
 
+    def refresh_holdings(self):
+        """보유종목 조회 (1단계)"""
+        if not self.is_logged_in:
+            return
+
+        try:
+            print("보유종목 조회 중...")
+            self.holdings = self.api.request_balance()
+            print(f"보유종목: {len(self.holdings)}개")
+
+            # 보유종목 상세 출력
+            for code, info in self.holdings.items():
+                print(f"  - {info['name']}({code}): {info['quantity']}주 @ {info['buy_price']:,}원")
+
+            # 통계 계산 및 업데이트 (2단계)
+            self.calculate_and_update_stats()
+
+        except Exception as e:
+            error_msg = f"보유종목 조회 실패: {e}"
+            print(error_msg)
+
+    def calculate_and_update_stats(self):
+        """통계 계산 및 업데이트 (2단계)"""
+        if not self.holdings:
+            # 보유종목 없으면 모두 0
+            self.stats_updated.emit(0, 0, 0, 0.0)
+            return
+
+        total_buy = 0      # 총매입
+        total_eval = 0     # 총평가
+
+        for code, info in self.holdings.items():
+            buy_price = info.get('buy_price', 0)
+            quantity = info.get('quantity', 0)
+            current_price = info.get('current_price', buy_price)  # 실시간 전에는 매입가 사용
+
+            total_buy += buy_price * quantity
+            total_eval += current_price * quantity
+
+        total_profit = total_eval - total_buy  # 총손익
+        total_profit_rate = (total_profit / total_buy * 100) if total_buy > 0 else 0.0  # 총수익률
+
+        print(f"[통계] 총매입: {total_buy:,}원 / 총평가: {total_eval:,}원 / 총손익: {total_profit:+,}원 / 총수익률: {total_profit_rate:+.2f}%")
+
+        self.stats_updated.emit(total_buy, total_eval, total_profit, total_profit_rate)
+
 
 class SimpleWindow(QMainWindow):
     """심플 GUI"""
@@ -99,6 +150,7 @@ class SimpleWindow(QMainWindow):
         self.controller.account_info.connect(self.on_account_info)
         self.controller.deposit_updated.connect(self.on_deposit_updated)
         self.controller.deposit_error.connect(self.on_deposit_error)
+        self.controller.stats_updated.connect(self.on_stats_updated)
 
         # 주기적 예수금 갱신 타이머 (30초마다)
         self.deposit_timer = QTimer()
@@ -169,6 +221,7 @@ class SimpleWindow(QMainWindow):
         info_layout.setSpacing(15)
         info_layout.setContentsMargins(20, 20, 20, 20)
 
+        # === 좌측 열 ===
         # 로그인 상태
         status_label_title = QLabel("로그인 상태:")
         status_label_title.setStyleSheet("font-size: 13pt; font-weight: bold;")
@@ -228,7 +281,41 @@ class SimpleWindow(QMainWindow):
         info_layout.addWidget(deposit_label_title, 3, 0)
         info_layout.addLayout(deposit_h_layout, 3, 1)
 
+        # === 우측 열 (통계) ===
+        # 총매입
+        total_buy_title = QLabel("총매입:")
+        total_buy_title.setStyleSheet("font-size: 13pt; font-weight: bold;")
+        self.total_buy_label = QLabel("0원")
+        self.total_buy_label.setStyleSheet("font-size: 13pt;")
+        info_layout.addWidget(total_buy_title, 0, 2)
+        info_layout.addWidget(self.total_buy_label, 0, 3)
+
+        # 총평가
+        total_eval_title = QLabel("총평가:")
+        total_eval_title.setStyleSheet("font-size: 13pt; font-weight: bold;")
+        self.total_eval_label = QLabel("0원")
+        self.total_eval_label.setStyleSheet("font-size: 13pt;")
+        info_layout.addWidget(total_eval_title, 1, 2)
+        info_layout.addWidget(self.total_eval_label, 1, 3)
+
+        # 총손익
+        total_profit_title = QLabel("총손익:")
+        total_profit_title.setStyleSheet("font-size: 13pt; font-weight: bold;")
+        self.total_profit_label = QLabel("0원")
+        self.total_profit_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #7f8c8d;")
+        info_layout.addWidget(total_profit_title, 2, 2)
+        info_layout.addWidget(self.total_profit_label, 2, 3)
+
+        # 총수익률
+        total_profit_rate_title = QLabel("총수익률:")
+        total_profit_rate_title.setStyleSheet("font-size: 13pt; font-weight: bold;")
+        self.total_profit_rate_label = QLabel("0.00%")
+        self.total_profit_rate_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #7f8c8d;")
+        info_layout.addWidget(total_profit_rate_title, 3, 2)
+        info_layout.addWidget(self.total_profit_rate_label, 3, 3)
+
         info_layout.setColumnStretch(1, 1)
+        info_layout.setColumnStretch(3, 1)
         info_group.setLayout(info_layout)
         main_layout.addWidget(info_group)
 
@@ -312,6 +399,42 @@ class SimpleWindow(QMainWindow):
         """타이머에 의한 자동 갱신"""
         print("[타이머] 예수금 자동 갱신")
         self.controller.refresh_deposit()
+
+    def on_stats_updated(self, total_buy, total_eval, total_profit, total_profit_rate):
+        """통계 업데이트 (2단계)"""
+        # 총매입
+        self.total_buy_label.setText(f"{total_buy:,}원")
+
+        # 총평가
+        self.total_eval_label.setText(f"{total_eval:,}원")
+
+        # 총손익 (색상 변경)
+        if total_profit > 0:
+            color = "#e74c3c"  # 빨강 (수익)
+            sign = "+"
+        elif total_profit < 0:
+            color = "#3498db"  # 파랑 (손실)
+            sign = ""
+        else:
+            color = "#7f8c8d"  # 회색 (0)
+            sign = ""
+
+        self.total_profit_label.setText(f"{sign}{total_profit:,}원")
+        self.total_profit_label.setStyleSheet(f"font-size: 16pt; font-weight: bold; color: {color};")
+
+        # 총수익률 (색상 변경)
+        if total_profit_rate > 0:
+            color = "#e74c3c"  # 빨강
+            sign = "+"
+        elif total_profit_rate < 0:
+            color = "#3498db"  # 파랑
+            sign = ""
+        else:
+            color = "#7f8c8d"  # 회색
+            sign = ""
+
+        self.total_profit_rate_label.setText(f"{sign}{total_profit_rate:.2f}%")
+        self.total_profit_rate_label.setStyleSheet(f"font-size: 16pt; font-weight: bold; color: {color};")
 
 
 class SimpleApp:
