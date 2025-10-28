@@ -238,12 +238,23 @@ class BuyStrategy(QObject):
         """기존 보유종목을 매수 목록에 추가"""
         for code, info in holdings.items():
             if code not in self.bought_stocks:
+                # 기존 보유종목에는 기본 설정 적용
+                default_settings = {
+                    'profit_cut_rate': 5.0,
+                    'loss_cut_rate': -3.0,
+                    'enable_profit_cut': True,
+                    'enable_loss_cut': True,
+                    'enable_trailing_stop': False,
+                    'trailing_stop_rate': 0.0,
+                }
+
                 # 슬롯 번호는 0으로 설정 (기존 보유)
                 self.bought_stocks[code] = {
                     'name': info['name'],
                     'quantity': info['quantity'],
                     'buy_price': info['buy_price'],
                     'slot_number': 0,  # 기존 보유는 슬롯 0
+                    'settings': default_settings,  # 기본 매도 설정
                     'buy_time': 0,  # 시간 정보 없음
                     'additional_buys': []
                 }
